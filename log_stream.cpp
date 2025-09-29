@@ -48,6 +48,21 @@ static size_t fileLine(const std::string& filename){
     return lineCount;
 }
 
+static size_t fileSize(const std::string& filename){
+    std::ifstream file(filename);
+    if (!file) {
+        std::cerr << "无法打开文件\n";
+        return -1;
+    }
+
+    size_t size = 0;
+    file.seekg(0, std::ios::end);
+    size = file.tellg();
+    file.close();
+    
+    return size;
+}
+
 // Logger -------------------------
 Logger& Logger::getInstance() {
     static Logger instance;
@@ -69,7 +84,9 @@ Logger::~Logger() {
 void Logger::setLogFile(const std::string& filename) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (logFile_.is_open()) logFile_.close();
+    currentFileSize_ = fileSize(filename);
     logFile_.open(filename, std::ios::app);
+    fileName_ = filename;
 }
 
 void Logger::setConsoleOutput(bool enable) {
@@ -79,17 +96,70 @@ void Logger::setConsoleOutput(bool enable) {
 void Logger::logFlush() {
     if (!logBuffer_.empty()) {
         if(!logFile_.is_open()) {
-            logFile_.open("async_log.txt", std::ios::app);
+            fileName_ = "async.log";
+            currentFileSize_ = fileSize(fileName_);
+            logFile_.open(fileName_.c_str(), std::ios::app);
         }
 
         for(const auto& message : logBuffer_) {
-            logFile_ << message;
+            std::string legacy = "";
+            if(currentFileSize_ < logFileMaxSize_ && currentFileSize_ + message.size() >= logFileMaxSize_) {
+                std::string msg = message.substr(0, logFileMaxSize_ - currentFileSize_);
+                legacy = message.substr(logFileMaxSize_ - currentFileSize_);
+                logFile_ << msg;
+                currentFileSize_ += msg.size();
+            }else{
+                logFile_ << message;
+                currentFileSize_ += message.size();
+            }
+            
+            if(currentFileSize_ >= logFileMaxSize_) {
+                logFile_.close();
+                for(int i = logFileMaxCount_ - 1; i >= 0; --i) {
+                    std::string oldName = fileName_ + std::to_string(i);
+                    std::string newName = fileName_ + std::to_string(i + 1);
+                    if(fileExists(oldName)) {
+                        if(i + 1 >= logFileMaxCount_) {
+                            std::remove(oldName.c_str());
+                        } else {
+                            std::rename(oldName.c_str(), newName.c_str());
+                        }
+                    }
+                }
+                std::string baseName = fileName_;
+                std::string firstRotated = fileName_ + "0";
+                std::rename(baseName.c_str(), firstRotated.c_str());
+                logFile_.open(baseName, std::ios::app);
+
+                if(!legacy.empty()) {
+                    logFile_ << legacy;
+                    currentFileSize_ = legacy.size();
+                } else {
+                    currentFileSize_ = 0;
+                }
+            }
         }
         logBuffer_.clear();
-
         logFile_.flush();
     }
 }
+
+void Logger::setLogFileMaxSize(size_t bytes) {
+    logFileMaxSize_ = bytes;
+}
+
+void Logger::setLogFileMaxCount(size_t count) {
+    logFileMaxCount_ = count;
+}
+
+void Logger::asyncOutputLineMax(size_t count) {
+    asyncOutputLineMax_ = count;
+}
+
+void Logger::asyncOutputTimeOutSec(size_t sec) {
+    asyncOutputTimeOutSec_ = sec;
+}
+
 
 void Logger::crashHandler(int signum) {
     Logger::getInstance().logFlush();
@@ -112,7 +182,7 @@ void Logger::asyncThreadFunction() {
     asyncThreadIsRunning_ = true;
     while (asyncOutput_) {
         std::unique_lock<std::mutex> lock(mutex_);
-        bool result = log_cv_.wait_for(lock, std::chrono::seconds(3), [this] {
+        bool result = log_cv_.wait_for(lock, std::chrono::seconds(asyncOutputTimeOutSec_), [this] {
             return !logBuffer_.empty();
         });
         // 不论结果是超时还是有数据，都会尝试写入日志
@@ -170,12 +240,13 @@ void Logger::write(LogLevel level, const std::string& message) {
     if (asyncOutput_) {
         std::lock_guard<std::mutex> lock(mutex_);
         logBuffer_.push_back(line);
-        if(logBuffer_.size() > asyncOutputBufferMax_) {
+        if(logBuffer_.size() >= asyncOutputLineMax_) {
             log_cv_.notify_one();
         }
     } else {
         logFile_ << line;
     }
+    
 }
 
 std::string Logger::getTimestamp() {

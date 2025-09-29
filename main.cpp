@@ -6,6 +6,11 @@ int main() {
     Logger::getInstance().setConsoleOutput(true);
     Logger::getInstance().setAsyncOutput(true);
     Logger::getInstance().setOutputLevel(LogLevel::DEBUG);
+    // Logger::getInstance().setLogFileMaxSize(1024 * 10);
+    // Logger::getInstance().setLogFileMaxCount(3);
+    // Logger::getInstance().asyncOutputLineMax(50);
+    // Logger::getInstance().asyncOutputTimeOutSec(2);
+
 
     // c++ 风格
     LOG(INFO) << "Configuration loaded successfully.";
@@ -20,9 +25,12 @@ int main() {
     LOG_W("Memory usage is high: %d%%", 85);
     LOG_D("User %s logged in", "admin");
     
-    uint8_t buf[128];
+    uint8_t buf[256];
     for (int i = 0; i < sizeof(buf); ++i) {
         buf[i] = i;
     }
     LOG_HEXDUMP(DEBUG, buf, sizeof(buf), "Buffer", Logger::HexDumpFormat::HEX_DUMP_1B);
+    LOG_HEXDUMP(INFO, buf, sizeof(buf), "Buffer", Logger::HexDumpFormat::HEX_DUMP_2B);
+    LOG_HEXDUMP(WARNING, buf, sizeof(buf), "Buffer", Logger::HexDumpFormat::HEX_DUMP_4B);
+    LOG_HEXDUMP(ERR, buf, sizeof(buf), "Buffer", Logger::HexDumpFormat::HEX_DUMP_8B);
 }

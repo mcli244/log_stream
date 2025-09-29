@@ -60,6 +60,11 @@ public:
     void setLogFile(const std::string& filename);
     void setConsoleOutput(bool enable);
     bool setAsyncOutput(bool enable);
+    void setLogFileMaxSize(size_t bytes);
+    void setLogFileMaxCount(size_t count);
+    void asyncOutputLineMax(size_t count);
+    void asyncOutputTimeOutSec(size_t sec);
+
     void write(LogLevel level, const std::string& message);
     void asyncThreadFunction();
     void logFlush();
@@ -74,6 +79,7 @@ private:
 
     std::string getTimestamp();
     std::string levelToString(LogLevel level);
+    std::string fileName_;
     
     static void crashHandler(int signum);
 
@@ -85,20 +91,16 @@ private:
     std::vector<std::string> logBuffer_;
     std::thread asyncThread_;
     bool asyncThreadIsRunning_ = false;
-    size_t asyncOutputBufferMax_ = 100; // 异步输出缓冲区最大行数
+    size_t asyncOutputLineMax_ = 100;
+    size_t asyncOutputTimeOutSec_ = 3;
     std::condition_variable log_cv_;
     std::mutex log_mutex_;
 
-    LogLevel output_level_ = LogLevel::DEBUG; // 默认日志级别为INFO
-    // 日志轮转参数
-    // 可以按照文件大小或者行数进行轮转, 默认按文件大小轮转
-    // 当两个都启用时, 以先达到的为准
-    size_t logFileMaxSize_ = 10 * 1024 * 1024; 
-    size_t logFileMaxLine_ = 0;
+    LogLevel output_level_ = LogLevel::DEBUG; 
+    size_t logFileMaxSize_ = 1024*1024*1; // 10 MB
     size_t logFileMaxCount_ = 5;
-
+    size_t currentFileIndex_ = 0;
     size_t currentFileSize_ = 0;
-    size_t currentFileLine_ = 0;
 };
 
 
